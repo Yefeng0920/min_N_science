@@ -39,7 +39,7 @@ The datasets were originally compiled by:
 Owing to journals’ mandatory open data policies and the widespread adoption of FAIR (Findable, Accessible, Interoperable, and Reusable) data-sharing principles, we could easily find and re-use these publicly accessible datasets.
 
 
-### `Fig`
+### `Fig` folder
 
 The `Figure` folder includes the Figure 1 (based on `R` code) reported in the paper. It also includes two supplementary figures.
 
