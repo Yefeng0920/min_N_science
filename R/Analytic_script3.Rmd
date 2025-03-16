@@ -161,7 +161,6 @@ p <- ggdensity(df.fig, x = "mu_unadj",
 p
 ```
 
-
 Primary study level data:
 
 ```{r individual data, warning=FALSE}
@@ -241,27 +240,25 @@ dat_psy <- readRDS(here("Dat","dat_psy.rds"))
 
 To assess the necessity of large sample sizes to reliable detect effect size in the real world and evaluate the impact of selective reporting, we conducted a series of descriptive and statistical analyses.
 
-- Estimating True Effect Sizes with Robust Bayesian Model Averaging
+-   Estimating True Effect Sizes with Robust Bayesian Model Averaging
 
 A key factor in understanding the need for large sample sizes is the magnitude of typical effect sizes in the studied disciplines. To obtain effect size estimates that account for selective reporting, we employed robust Bayesian model averaging (BMA) @bartovs2023robust, which adjusts for potential biases introduced by the preferential reporting of significant findings. This method provides a principled way to approximate the true effect size in each field by averaging over a set of plausible models weighted by their posterior probabilities. The detailed model fitting process is described in Bartoš et al. (2024) @bartovs2024footprint.
 
 To facilitate cross-disciplinary comparisons and interpretability, we converted the effect sizes into $\eta^2$ (or equivalently $R^2$), which represents the proportion of variance explained by the effect. This standardization allows for a consistent evaluation of effect size magnitudes across different study designs and measurement scales.
 
-- Evaluating Changes in Evidence Strength After Adjusting for Selective Reporting
+-   Evaluating Changes in Evidence Strength After Adjusting for Selective Reporting
 
 To quantify how the presence of statistical evidence changes after accounting for selective reporting, we applied a straightforward approach. Under the assumption of normality, we computed the Wald-type p-values for both:
 
-The naïve effect size (before correcting for selective reporting).
-The adjusted 'true' effect size (after selective reporting correction).
-We then calculated the percentage of cases in which the statistical significance of the effect changed (p < 0.05) after applying the selective reporting adjustment. This provides insight into how often selective reporting influences the strength of statistical conclusions.
+The naïve effect size (before correcting for selective reporting). The adjusted 'true' effect size (after selective reporting correction). We then calculated the percentage of cases in which the statistical significance of the effect changed (p \< 0.05) after applying the selective reporting adjustment. This provides insight into how often selective reporting influences the strength of statistical conclusions.
 
-- Quantifying Effect Size Overestimation via the Shrinkage Factor
+-   Quantifying Effect Size Overestimation via the Shrinkage Factor
 
 To measure the extent to which selective reporting leads to effect size inflation, we computed the shrinkage factor (SF), defined as the ratio of the adjusted effect size (after selective reporting correction) to the originally reported effect size. An SF value below 1 indicates that the reported effect size is systematically overestimated due to selective reporting.
 
 To quantify uncertainty in the SF estimates, we used the Delta method, a widely adopted technique for approximating the variance of non-linear transformations of estimators. This method enabled us to compute 95% confidence intervals for the SF, allowing for an assessment of the reliability of our bias-adjusted effect size estimates.
 
-- Determining Minimal Sample Sizes for Reliable Estimation
+-   Determining Minimal Sample Sizes for Reliable Estimation
 
 To establish the sample sizes necessary for robust effect size estimation, we determined:
 
@@ -269,23 +266,21 @@ The sample size required to achieve 80% power, the conventional standard for det
 
 These calculations were performed under a two-independent-groups experimental design, using a two-sample t-test, which is one of the most common statistical tests for comparing means across groups. By leveraging our effect size estimates, we provided empirical guidance on the minimal sample sizes needed to maintain statistical rigor in real-world research.
 
-- Estimating the False Discovery Rate Using the z-Curve Method
+-   Estimating the False Discovery Rate Using the z-Curve Method
 
 To quantify the false discovery rate (FDR)-the proportion of statistically significant results that are likely to be false positives-we applied the z-curve method @bartovs2022z. This technique analyzes the distribution of test statistics (e.g., z-scores) from published studies to estimate the extent of selective reporting and publication bias.
 
 The z-curve approach operates as follows:
 
-We extracted the distribution of reported z-values from studies that yielded statistically significant results (p < 0.05).
+We extracted the distribution of reported z-values from studies that yielded statistically significant results (p \< 0.05).
 
 A mixture model was fitted to this distribution to infer the proportion of observed results that stem from true effects versus those arising from random noise.
 
 The model was then extrapolated beyond the observed data to estimate two key metrics:
 
-The expected replication rate (ERR)—the probability that a statistically significant result would be replicated in a new study with the same design.
-The false discovery rate (FDR)—the estimated proportion of significant findings that are likely to be false positives.
+The expected replication rate (ERR)—the probability that a statistically significant result would be replicated in a new study with the same design. The false discovery rate (FDR)—the estimated proportion of significant findings that are likely to be false positives.
 
 By integrating these analytical approaches, we provide a comprehensive assessment of effect size estimation, selective reporting bias, and the statistical power requirements necessary for reliable inference in real-world research.
-
 
 ## Variance explained in the real word
 
@@ -525,7 +520,6 @@ df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
 knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
 ```
 
-
 Psychology:
 
 ```{r eta2 psychology, warning=FALSE}
@@ -559,11 +553,9 @@ df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
 knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
 ```
 
-
 ## Presence of evidence
 
 We calculate the overestimate of the presence of evidence using the typical Wald-type statistical tests under the normality assumption.
-
 
 Economics:
 
@@ -798,8 +790,7 @@ df.summary <- data.frame(Q1 = quantile(df_psy$n_adj, probs = 0.25)[[1]] * 2,
 knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
 ```
 
-
-## Power 
+## Power
 
 We calculate the power of individual studies to detect the true effect in the real world.
 
@@ -912,7 +903,6 @@ p.pwr <- df_pwr %>%
 
 p.pwr
 ```
-
 
 ## False discovery rate (FDR)
 
@@ -1027,8 +1017,6 @@ p.pwr + p.fdr + p.err + p.edr + plot_layout(nrow = 2, ncol = 2) +
 dev.off() 
 
 ```
-
-
 
 # Fig - median N
 
@@ -1230,7 +1218,6 @@ dev.off()
 # plot_layout(tag_level = 'new') +  plot_annotation(tag_levels = list(c(''))) & theme(plot.tag = element_text(size = 16, face = "bold"))  
 ```
 
-
 # function for absolute difference
 
 ```{r}
@@ -1252,7 +1239,6 @@ dat <- es.func1(dat = df_eco_null,
                var_m2 = se_adj^2)
 ```
 
-
 # Package information
 
 ```{r}
@@ -1260,4 +1246,3 @@ subset(data.frame(sessioninfo::package_info()), attached==TRUE, c(package, loade
 ```
 
 # References
-
