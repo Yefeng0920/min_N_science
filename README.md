@@ -23,7 +23,7 @@ The repository contains the following folders:
 
 - Fig
 
-- E
+- R
 
 ### `Dat` folder
 
