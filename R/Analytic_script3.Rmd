@@ -1,0 +1,1263 @@
+---
+title: "Real-world research often requires enormous sample sizes: A call for top-down science policies supporting grassroots big-team science initiatives"
+author: "Yefeng Yang, Timothy H. Parker, Malcolm Macleod, Emily Sena, Malgorzata Lagisz, Shinichi Nakagawa"
+output:
+#  rmdformats::readthedown: 
+  rmdformats::robobook:
+    code_folding: hide
+    code_download: false
+    thumbnails: false
+    highlight: tango
+    lightbox: true
+    gallery: false
+    toc_depth: 4
+    fig.align: center
+    fig_caption: no
+    cache: yes
+    use_bookdown: false
+  pkgdown:
+    as_is: true 
+editor_options:
+  chunk_output_type: console
+bibliography: "references.bib"
+csl: "environmental-evidence.csl"
+link-citations: yes  
+output: html_document
+date: 'Last update March 2025'
+---
+
+# Set-up
+
+First, we will need to have some basic set-up, including loading/installing required `R` packages, defining custom functions for the computation, and defining color schemes.
+
+Load (`library(packagename)`) all necessary packages listed following. For any packages you have not installed before, please use `install.packages(packagename)` to install them. In case packages are not archived on [CRAN](https://cran.r-project.org/), use `devtools::install_github("repository/packagename")`. Package version information of all packages used in our analysis can be at the end of this Supplementary Material.
+
+```{r package, warning=FALSE}
+#-------------------------------------------#
+# load package
+#-------------------------------------------#
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(readr)
+  library(tidyr) 
+  library(here)
+  library(ggplot2)
+  library(ggpubr)
+  library(metafor)
+  library(metaSEM)
+  library(TOSTER)
+  library(cowplot)
+  library(car)
+  library(patchwork)
+  library(ggpubr)
+  library(RoBMA)
+  library(robustmeta)
+  library(PRDA)
+  library(zcurve)
+  library(RColorBrewer)
+  library(distributional)
+  library(ggdist)
+  library(ggsci)
+  library(paletteer)
+  library(pwr)
+  library(confintr)}
+  )
+
+#-------------------------------------------#
+# custom functions
+#-------------------------------------------#
+
+# functions for power analysis and design
+basic.N <- function(d) {power.t.test(delta=d,sd=1,power=0.8,sig=0.05)$n}
+basic.N2 <- function(d) {power.t.test(delta=d,sd=1,power=0.99,sig=0.05)$n}
+
+# define a function for post-hoc power calculation
+pwrcalc <- function(mu_adj, se_obs) {
+  zscore <- mu_adj / se_obs
+  power <- 1 - pnorm(1.96 - zscore) + pnorm(-1.96 - zscore)
+  return(power)
+}
+
+# function for the estimation of shrinkage factor
+sf_calc <- function(adjusted, unadjusted, digits = 2){
+  of <- car::deltaMethod(
+    object = c(
+      m_adj   = mean(adjusted, na.rm = T),
+      m_unadj = mean(unadjusted, na.rm = T)),
+    vcov   = matrix(c(var(adjusted, na.rm = T) / length(adjusted[!is.na(adjusted)]), 0, 0, var(unadjusted, na.rm = T) / length(unadjusted[!is.na(unadjusted)])), nrow = 2, ncol = 2),
+    g      = "m_adj / m_unadj")
+
+  est <- of[,"Estimate"]
+  lCI <- of[,"2.5 %"]
+  uCI <- of[,"97.5 %"]
+
+  paste0(format(round(est, digits), nsmall = digits), " [", format(round(lCI, digits), nsmall = digits), ", ", format(round(uCI, digits), nsmall = digits), "]")
+}
+
+#-------------------------------------------#
+# pre-defined colour scheme
+#-------------------------------------------#
+
+dotCOLS = c("#1B9E77", "#D95F02", "#7570B3", "#E7298A") 
+barCOLS = c("#1B9E77", "#D95F02", "#7570B3", "#E7298A")
+# set seed for reproducibility
+set.seed(2025)
+```
+
+# Data
+
+In this study, we did not directly collect new data but instead leveraged the increasing availability of openly shared research datasets. The growing adoption of open science practices @ferguson2023survey, driven by mandatory data-sharing policies of scientific journals and the FAIR data principles @wilkinson2016fair, has led to a proliferation of high-quality, publicly accessible data suitable for secondary analysis. Our dataset was compiled from existing meta-analytic datasets that had been systematically aggregated and made available by Bartoš et al. (2024) @bartovs2024footprint. These datasets were derived from previously published meta-analyses across four disciplines—medicine, environmental sciences, psychology, and economics—providing a broad empirical basis for investigating effect size estimation and statistical power in real-world research. A detailed description of the original dataset construction can be found in Bartoš et al. (2024) @bartovs2024footprint.
+
+The medical sciences dataset comprises 67,393 meta-analyses of both continuous and dichotomous outcomes, extracted from the Cochrane Database of Systematic Reviews (CDSR) spanning from 1997 to 2020. This extensive collection of systematically reviewed evidence represents a critical resource for assessing effect size variability in clinical research. The environmental sciences dataset includes 199 meta-analyses reporting mean differences, correlation coefficients, and odds ratios, published between 2010 and 2020. The psychology dataset consists of two subsets: 199 meta-analyses of mean differences and correlation coefficients published in Psychological Bulletin between 2011 and 2016, and an additional 406 meta-analyses from studies published in 2008 and 2018. The economics dataset is composed of 327 meta-analyses of regression and correlation coefficients, covering publications from 1967 to 2021, providing a long-term perspective on effect size estimation in economic research.
+
+While this dataset is not fully representative of all research in these disciplines, it constitutes the most comprehensive publicly available collection of meta-analyses to date. Importantly, as the original dataset was constructed using a random sampling approach to select meta-analysis papers, it provides a meaningful and representative snapshot of the broader scientific literature. This breadth and diversity allow for a rigorous examination of how large sample sizes must be to obtain reliable and unbiased effect size estimates across different fields.
+
+## Load
+
+Meta-analytic level data:
+
+```{r MA data, warning=FALSE}
+# load estimates
+df <- read.csv(here("Dat","dat.csv"))
+names(df)[3:7] <- c("mu_adj", "se_adj", "mu_unadj", "se_unadj", "discipline")
+# study info
+studies_info <- readRDS(here("Dat","info.RDS"))
+
+# calculate sampling variance of mu
+df <- df %>% mutate(var_adj = se_adj^2,
+                    var_unadj = se_unadj^2)
+# adjust order
+df <- df[c(7,1,2,5,6,3,4)]
+```
+
+Using the economical data as an example, let's have a look at the data:
+
+```{r MA data, warning=FALSE}
+knitr::kable(dfround(df,3) %>% head(), "pipe")
+```
+
+We can also visualize the distribution of the effect size estimates:
+
+```{r fig env, warning=FALSE}
+# data frame
+df.fig <- filter(df, discipline == "economics")
+# plot
+p <- ggdensity(df.fig, x = "mu_unadj",
+   add = "none", rug = TRUE, alpha = 0.4, fill = paletteer_d("ggthemes::excel_Berlin")[4], color = paletteer_d("ggthemes::excel_Berlin")[4]) + 
+  labs(title = "Distribution of effect size estimates in Economics", x = "Effect size estimates (naive)", y = "Density", fill = "", color = "") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme(axis.line.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 15),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 15),
+        plot.title = element_text(hjust = 0.5),
+        legend.text=element_text(size = 15),
+        legend.position = "none"
+        ) + xlim(0,1.5)
+
+p
+```
+
+
+Primary study level data:
+
+```{r individual data, warning=FALSE}
+# load individual level estimates
+datlist_eco <- readRDS(here("Dat/obs","dat_economics.RDS"))
+datlist_env <- readRDS(here("Dat/obs","dat_environmental.RDS"))
+datlist_med <- readRDS(here("Dat/obs","dat_medicine.RDS"))
+datlist_psy <- readRDS(here("Dat/obs","dat_psychology.RDS"))
+datlist_psy2 <- readRDS(here("Dat/obs","dat_psychology2.RDS"))
+```
+
+## Pre-process
+
+We need to perform some basic preprocessing, including calculating p-values, effect size transformations, and splitting the dataset according to discipline.
+
+```{r pre-process, warning=FALSE}
+# calculate two-sided p values based on a standard normal distribution
+df <- df %>% mutate(zval_unadj = mu_unadj / se_unadj,
+                    pval_unadj = pnorm(abs(zval_unadj), lower.tail = F) * 2,
+                    zval_adj = mu_adj / se_adj,
+                    pval_adj = pnorm(abs(zval_adj), lower.tail = F) * 2)
+
+# subsets
+df_eco <- df %>% filter(discipline == "economics")
+df_env <- df %>% filter(discipline == "environmental")
+df_med <- df %>% filter(discipline == "medicine")
+df_psy <- df %>% filter(discipline == "psychology")
+
+# convert the effect size from z to d
+for(i in seq_along(datlist_eco)) {
+  datlist_eco[[i]] <- datlist_eco[[i]] %>% 
+    mutate(mu_obs = z2d(z),
+           se_obs = se_z2se_d(se_z = z.se, z = z))
+}
+
+for(i in seq_along(datlist_env)) {
+  datlist_env[[i]] <- datlist_env[[i]] %>% 
+    mutate(mu_obs = z2d(z),
+           se_obs = se_z2se_d(se_z = z.se, z = z))
+}
+
+for(i in seq_along(datlist_med)) {
+  datlist_med[[i]] <- datlist_med[[i]] %>% 
+    mutate(mu_obs = z2d(z),
+           se_obs = se_z2se_d(se_z = z.se, z = z))
+}
+
+for(i in seq_along(datlist_psy)) {
+  datlist_psy[[i]] <- datlist_psy[[i]] %>% 
+    mutate(mu_obs = z2d(z),
+           se_obs = se_z2se_d(se_z = z.se, z = z))
+}
+
+for(i in seq_along(datlist_psy2)) {
+  datlist_psy2[[i]] <- datlist_psy2[[i]] %>% 
+    mutate(mu_obs = z2d(z),
+           se_obs = se_z2se_d(se_z = z.se, z = z))
+}
+
+# convert into dataframes
+dat_eco <- bind_rows(datlist_eco, .id = "source")
+dat_env <- bind_rows(datlist_env, .id = "source")
+dat_med <- bind_rows(datlist_med, .id = "source")
+dat_psy <- bind_rows(c(datlist_psy,datlist_psy2), .id = "source")
+# save to save time
+#saveRDS(dat_eco, here("Dat","dat_eco.rds")) 
+dat_eco <- readRDS(here("Dat","dat_eco.rds"))
+#saveRDS(dat_env, here("Dat","dat_env.rds")) 
+dat_env <- readRDS(here("Dat","dat_env.rds"))
+#saveRDS(dat_med, here("Dat","dat_med.rds")) 
+dat_med <- readRDS(here("Dat","dat_med.rds"))
+#saveRDS(dat_psy, here("Dat","dat_psy.rds")) 
+dat_psy <- readRDS(here("Dat","dat_psy.rds"))
+```
+
+# Analysis
+
+To assess the necessity of large sample sizes to reliable detect effect size in the real world and evaluate the impact of selective reporting, we conducted a series of descriptive and statistical analyses.
+
+- Estimating True Effect Sizes with Robust Bayesian Model Averaging
+
+A key factor in understanding the need for large sample sizes is the magnitude of typical effect sizes in the studied disciplines. To obtain effect size estimates that account for selective reporting, we employed robust Bayesian model averaging (BMA) @bartovs2023robust, which adjusts for potential biases introduced by the preferential reporting of significant findings. This method provides a principled way to approximate the true effect size in each field by averaging over a set of plausible models weighted by their posterior probabilities. The detailed model fitting process is described in Bartoš et al. (2024) @bartovs2024footprint.
+
+To facilitate cross-disciplinary comparisons and interpretability, we converted the effect sizes into $\eta^2$ (or equivalently $R^2$), which represents the proportion of variance explained by the effect. This standardization allows for a consistent evaluation of effect size magnitudes across different study designs and measurement scales.
+
+- Evaluating Changes in Evidence Strength After Adjusting for Selective Reporting
+
+To quantify how the presence of statistical evidence changes after accounting for selective reporting, we applied a straightforward approach. Under the assumption of normality, we computed the Wald-type p-values for both:
+
+The naïve effect size (before correcting for selective reporting).
+The adjusted 'true' effect size (after selective reporting correction).
+We then calculated the percentage of cases in which the statistical significance of the effect changed (p < 0.05) after applying the selective reporting adjustment. This provides insight into how often selective reporting influences the strength of statistical conclusions.
+
+- Quantifying Effect Size Overestimation via the Shrinkage Factor
+
+To measure the extent to which selective reporting leads to effect size inflation, we computed the shrinkage factor (SF), defined as the ratio of the adjusted effect size (after selective reporting correction) to the originally reported effect size. An SF value below 1 indicates that the reported effect size is systematically overestimated due to selective reporting.
+
+To quantify uncertainty in the SF estimates, we used the Delta method, a widely adopted technique for approximating the variance of non-linear transformations of estimators. This method enabled us to compute 95% confidence intervals for the SF, allowing for an assessment of the reliability of our bias-adjusted effect size estimates.
+
+- Determining Minimal Sample Sizes for Reliable Estimation
+
+To establish the sample sizes necessary for robust effect size estimation, we determined:
+
+The sample size required to achieve 80% power, the conventional standard for detecting true effects reliably. The sample size required to prevent effect size overestimation due to random noise, ensuring that observed effects are not artificially inflated in small samples.
+
+These calculations were performed under a two-independent-groups experimental design, using a two-sample t-test, which is one of the most common statistical tests for comparing means across groups. By leveraging our effect size estimates, we provided empirical guidance on the minimal sample sizes needed to maintain statistical rigor in real-world research.
+
+- Estimating the False Discovery Rate Using the z-Curve Method
+
+To quantify the false discovery rate (FDR)-the proportion of statistically significant results that are likely to be false positives-we applied the z-curve method @bartovs2022z. This technique analyzes the distribution of test statistics (e.g., z-scores) from published studies to estimate the extent of selective reporting and publication bias.
+
+The z-curve approach operates as follows:
+
+We extracted the distribution of reported z-values from studies that yielded statistically significant results (p < 0.05).
+
+A mixture model was fitted to this distribution to infer the proportion of observed results that stem from true effects versus those arising from random noise.
+
+The model was then extrapolated beyond the observed data to estimate two key metrics:
+
+The expected replication rate (ERR)—the probability that a statistically significant result would be replicated in a new study with the same design.
+The false discovery rate (FDR)—the estimated proportion of significant findings that are likely to be false positives.
+
+By integrating these analytical approaches, we provide a comprehensive assessment of effect size estimation, selective reporting bias, and the statistical power requirements necessary for reliable inference in real-world research.
+
+
+## Variance explained in the real word
+
+Below, we will first visualize the impact of selective reporting on the effect size estimates, measured by `Cohen'd`.
+
+Economics:
+
+```{r es dist economics, warning=FALSE}
+# economics
+df_eco_dist = tibble(
+  Design = c("Naïve effect", "Adjusted effect"),
+  est = c(dist_normal(0.20,0.3), dist_normal(0.07,0.3)) # estimates from the abstract of Bartos et. al 2023 (see also Tables 1 and 2)
+)
+
+df_eco_dist$Design <- as.factor(df_eco_dist$Design)
+df_eco_dist$Design <- factor(df_eco_dist$Design, levels = c("Adjusted effect", "Naïve effect"))
+
+p1 <- df_eco_dist %>%
+  ggplot(aes(y = Design, xdist = est, fill = Design, color = Design)) +
+  stat_dots(slab_shape = 19, quantiles = 400) + 
+  geom_point(aes(x = c(0.20, 0.07)), size = 2.5, color = "black") + 
+  geom_vline(xintercept = c(0.20, 0.07), color = "grey30", linetype = "dashed") + 
+  geom_text(aes(x = -1, y = 2.8, label = "Delta == 0.15*' (116%)'"), size = 5, hjust = 0, color = "black", parse = TRUE) +  # from Table 2 of Bartos et. al 2023 
+  scale_x_continuous(breaks = seq(-2,2,by=1), labels = seq(-2,2,by=1), expand = c(0, 0.01)) + 
+  scale_y_discrete(expand = c(0.05, 0)) + 
+  scale_color_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[4], "grey80")) +
+  scale_fill_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[4], "grey80")) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "", x = "Effect sizes in Economics", title = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+      axis.text.x = element_text(size = 12, color = "black"),
+      axis.text.y = element_text(size = 12, color = "black"),
+      strip.text = element_text(size = 14, color = "black"),
+      plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm')) 
+p1
+```
+
+Environment:
+
+```{r es dist environment, warning=FALSE}
+# environment
+df_env_dist = tibble(
+  Design = c("Naïve effect", "Adjusted effect"),
+  est = c(dist_normal(0.62,0.3), dist_normal(0.43,0.3))
+)
+
+df_env_dist$Design <- as.factor(df_env_dist$Design)
+df_env_dist$Design <- factor(df_env_dist$Design, levels = c("Adjusted effect", "Naïve effect"))
+
+p2 <- df_env_dist %>%
+  ggplot(aes(y = Design, xdist = est, fill = Design, color = Design)) +
+  stat_dots(slab_shape = 19, quantiles = 400) + 
+  geom_point(aes(x = c(0.62, 0.43)), size = 2.5, color = "black") + 
+  geom_vline(xintercept = c(0.62, 0.43), color = "grey30", linetype = "dashed") + 
+  geom_text(aes(x = -1, y = 2.8, label = "Delta == 0.33*' (78%)'"), size = 5, hjust = 0, color = "black", parse = TRUE) + 
+  scale_x_continuous(breaks = seq(-2,2,by=1), labels = seq(-2,2,by=1), expand = c(0, 0.01)) + 
+  scale_y_discrete(expand = c(0.05, 0)) + 
+  scale_color_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[2], "grey80")) +
+  scale_fill_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[2], "grey80")) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "", x = "Effect sizes in Environment", title = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
+p2
+```
+
+Medicine:
+
+```{r es dist medicine, warning=FALSE}
+# medicine
+df_med_dist = tibble(
+  Design = c("Naïve effect", "Adjusted effect"),
+  est = c(dist_normal(0.24,0.3), dist_normal(0.13,0.3))
+)
+
+df_med_dist$Design <- as.factor(df_med_dist$Design)
+df_med_dist$Design <- factor(df_med_dist$Design, levels = c("Adjusted effect", "Naïve effect"))
+
+p3 <- df_med_dist %>%
+  ggplot(aes(y = Design, xdist = est, fill = Design, color = Design)) +
+  stat_dots(slab_shape = 19, quantiles = 400) + 
+  geom_point(aes(x = c(0.24, 0.13)), size = 2.5, color = "black") + 
+  geom_vline(xintercept = c(0.24, 0.13), color = "grey30", linetype = "dashed") + 
+  geom_text(aes(x = -1, y = 2.8, label = "Delta == 0.13*' (62%)'"), size = 5, hjust = 0, color = "black", parse = TRUE) +  
+  scale_x_continuous(breaks = seq(-2,2,by=1), labels = seq(-2,2,by=1), expand = c(0, 0.01)) + 
+  scale_y_discrete(expand = c(0.05, 0)) + 
+  scale_color_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[1], "grey80")) +
+  scale_fill_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[1], "grey80")) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "", x = "Effect sizes in Medicine", title = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
+p3
+```
+
+Psychology:
+
+```{r es dist psychology, warning=FALSE}
+# psychology
+df_psy_dist = tibble(
+  Design = c("Naïve effect", "Adjusted effect"),
+  est = c(dist_normal(0.37,0.3), dist_normal(0.26,0.3))
+)
+
+df_psy_dist$Design <- as.factor(df_psy_dist$Design)
+df_psy_dist$Design <- factor(df_psy_dist$Design, levels = c("Adjusted effect", "Naïve effect"))
+
+p4 <- df_psy_dist %>%
+  ggplot(aes(y = Design, xdist = est, fill = Design, color = Design)) +
+  stat_dots(slab_shape = 19, quantiles = 400) + 
+  geom_point(aes(x = mean(est)), size = 2.5, color = "red") + 
+  geom_point(aes(x = c(0.37, 0.26)), size = 2.5, color = "black") + 
+  geom_vline(xintercept = c(0.37, 0.26), color = "grey30", linetype = "dashed") + 
+  geom_text(aes(x = -1, y = 2.8, label = "Delta == 0.13*' (39%)'"), size = 5, hjust = 0, color = "black", parse = TRUE) + 
+  scale_x_continuous(breaks = seq(-2,2,by=1), labels = seq(-2,2,by=1), expand = c(0, 0.01)) + 
+  scale_y_discrete(expand = c(0.05, 0)) + 
+  scale_color_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[3], "grey80")) +
+  scale_fill_manual(values = c(paletteer_d("ggthemes::excel_Berlin")[3], "grey80")) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "", x = "Effect sizes in Psychology", title = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
+p4
+```
+
+Then, we convert effect size measure into variance explained $\eta^2$ to show the strength of the real-word effects.
+
+Economics:
+
+```{r eta2 economics, warning=FALSE}
+# economics
+df.fig <- df_eco %>% mutate(eta2_unadj = d2r(mu_unadj)^2,
+                            eta2_adj = d2r(mu_adj)^2)
+# plot
+p1 <- ggdensity(df.fig, x = "eta2_adj",
+   add = "none", rug = TRUE, alpha = 0.4, fill = paletteer_d("ggthemes::excel_Berlin")[4], color = paletteer_d("ggthemes::excel_Berlin")[4]) + 
+  labs(title = "Variance explained in Economics", x = "Variance explained", y = "Density", fill = "", color = "") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme(axis.line.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 15),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 15),
+        plot.title = element_text(hjust = 0.5),
+        legend.text=element_text(size = 15),
+        legend.position = "none"
+        ) + xlim(0,0.4)
+p1
+
+df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$eta2_adj, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$eta2_adj, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$eta2_adj),
+                         SD = sd(df.fig$eta2_adj))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Economics:
+
+```{r eta2 environment, warning=FALSE}
+# environment
+df.fig <- df_env %>% mutate(eta2_unadj = d2r(mu_unadj)^2,
+                            eta2_adj = d2r(mu_adj)^2)
+# plot
+p2 <- ggdensity(df.fig, x = "eta2_adj",
+   add = "none", rug = TRUE, alpha = 0.4, fill = paletteer_d("ggthemes::excel_Berlin")[2], color = paletteer_d("ggthemes::excel_Berlin")[2]) + 
+  labs(title = "Variance explained in Environment", x = "Variance explained", y = "Density", fill = "", color = "") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme(axis.line.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 15),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 15),
+        plot.title = element_text(hjust = 0.5),
+        legend.text=element_text(size = 15),
+        legend.position = "none"
+        ) + xlim(0,0.4)
+p2
+
+df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$eta2_adj, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$eta2_adj, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$eta2_adj),
+                         SD = sd(df.fig$eta2_adj))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Medicine:
+
+```{r eta2 medicine, warning=FALSE}
+# medicine
+df.fig <- df_med %>% mutate(eta2_unadj = d2r(mu_unadj)^2,
+                            eta2_adj = d2r(mu_adj)^2)
+# plot
+p3 <- ggdensity(df.fig, x = "eta2_adj",
+   add = "none", rug = TRUE, alpha = 0.4, fill = paletteer_d("ggthemes::excel_Berlin")[1], color = paletteer_d("ggthemes::excel_Berlin")[1]) + 
+  labs(title = "Variance explained in Medicine", x = "Variance explained", y = "Density", fill = "", color = "") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme(axis.line.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 15),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 15),
+        plot.title = element_text(hjust = 0.5),
+        legend.text=element_text(size = 15),
+        legend.position = "none"
+        ) + xlim(0,0.4)
+p3
+
+df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$eta2_adj, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$eta2_adj, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$eta2_adj),
+                         SD = sd(df.fig$eta2_adj))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+
+Psychology:
+
+```{r eta2 psychology, warning=FALSE}
+# psychology
+df.fig <- df_psy %>% mutate(eta2_unadj = d2r(mu_unadj)^2,
+                            eta2_adj = d2r(mu_adj)^2)
+# plot
+p4 <- ggdensity(df.fig, x = "eta2_adj",
+   add = "none", rug = TRUE, alpha = 0.4, fill = paletteer_d("ggthemes::excel_Berlin")[3], color = paletteer_d("ggthemes::excel_Berlin")[3]) + 
+  labs(title = "Variance explained in Psychology", x = "Variance explained", y = "Density", fill = "", color = "") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme(axis.line.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 15),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 15),
+        plot.title = element_text(hjust = 0.5),
+        legend.text=element_text(size = 15),
+        legend.position = "none"
+        ) + xlim(0,0.4)
+p4
+
+df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$eta2_adj, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$eta2_adj, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$eta2_adj),
+                         SD = sd(df.fig$eta2_adj))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+
+## Presence of evidence
+
+We calculate the overestimate of the presence of evidence using the typical Wald-type statistical tests under the normality assumption.
+
+
+Economics:
+
+```{r wald p economics, warning=FALSE}
+df_eco_null <- filter(df_eco, pval_unadj < 0.05 & pval_adj > 0.05)
+nrow(df_eco_null) / nrow(filter(df_eco, pval_unadj < 0.05))
+```
+
+Environment:
+
+```{r wald p environment, warning=FALSE}
+df_env_null <- filter(df_env, pval_unadj < 0.05 & pval_adj > 0.05)
+nrow(df_env_null) / nrow(filter(df_env, pval_unadj < 0.05))
+```
+
+Medicine:
+
+```{r wald p medicine, warning=FALSE}
+df_med_null <- filter(df_med, pval_unadj < 0.05 & pval_adj > 0.05)
+nrow(df_med_null) / nrow(filter(df_med, pval_unadj < 0.05))
+```
+
+Psychology:
+
+```{r wald p psychology, warning=FALSE}
+df_psy_null <- filter(df_psy, pval_unadj < 0.05 & pval_adj > 0.05)
+nrow(df_psy_null) / nrow(filter(df_psy, pval_unadj < 0.05))
+```
+
+## Shrinkage
+
+We calculate the shrinkage factor to quantify the degree to which the effect size is inflated by the selective reporting.
+
+Economics:
+
+```{r shrinkage economics, warning=FALSE}
+sf_calc(df_eco$mu_adj, df_eco$mu_unadj)
+```
+
+Environment:
+
+```{r shrinkage environment, warning=FALSE}
+sf_calc(df_env$mu_adj, df_env$mu_unadj)
+```
+
+Medicine:
+
+```{r shrinkage medicine, warning=FALSE}
+sf_calc(df_med$mu_adj, df_med$mu_unadj)
+```
+
+Psychology:
+
+```{r shrinkage psychology, warning=FALSE}
+sf_calc(df_psy$mu_adj, df_psy$mu_unadj)
+```
+
+## Sample size determination
+
+There are several ways to determine the minimum sample size required to achieve a certain power (e.g., the nominal 80%). Let's start with a subset of economics for comparison and validation.
+
+The first way is the 16 S‐squared approach:
+
+```{r approach 16S2, warning=FALSE}
+# based on R basic function
+ttest.N <- function(d) {power.t.test(delta=d,sd=1,power=0.8,sig=0.05)$n}
+# based on 16 S-squared
+sixteenS.N <- function(d) {16/(d^2)}
+
+# compute absolute values of adjusted mu
+d <- abs(df_eco$mu_adj)
+
+# compute n1 and n2
+n1 <- sapply(d, ttest.N)
+n2 <- sixteenS.N(d)
+
+# convert to a data frame for ggplot
+df_plot <- data.frame(n1 = n1, n2 = n2)
+
+# create the scatter plot with diagonal reference line
+p <- ggplot(df_plot, aes(x = n1, y = n2)) +
+  geom_point(color = "blue", alpha = 0.6) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,1000)) +
+  scale_y_continuous(limits = c(0,1000)) +
+  labs(
+    x = "n1 (R basic function)",
+    y = "n2 (16 S-squared)",
+    title = "Comparison of two power calculation approches"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12)
+  )
+p
+```
+
+The second approach is based on signal-noise-ratio (SNR):
+
+```{r approach SNR, warning=FALSE}
+# based on SNR
+SNR.N <- function(d) {2*(2.8/d)^2}
+
+# compute absolute values of adjusted mu
+d <- abs(df_eco$mu_adj)
+
+# compute n1 and n2
+n1 <- sapply(d, ttest.N)
+n2 = SNR.N(d)
+
+# convert to a data frame for ggplot
+df_plot <- data.frame(n1 = n1, n2 = n2)
+
+# create the scatter plot with diagonal reference line
+p <- ggplot(df_plot, aes(x = n1, y = n2)) +
+  geom_point(color = "blue", alpha = 0.6) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,1000)) +
+  scale_y_continuous(limits = c(0,1000)) +
+  labs(
+    x = "n1 (R basic function)",
+    y = "n2 (SNR)",
+    title = "Comparison of two power calculation approches"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12)
+  )
+p
+```
+
+The third approach is based on a dedicated power calculation `R` package `pwr`:
+
+```{r approach pwr, warning=FALSE}
+# based on the package `pwr`
+pwr.N <- function(d) {pwr.t.test(d = d, power = 0.80, sig.level = 0.05)$n}
+
+# compute absolute values of adjusted mu
+d <- abs(df_eco$mu_adj)
+
+# compute n1 and n2
+n1 <- sapply(d, ttest.N)
+n2 = sapply(d,pwr.N)
+
+# convert to a data frame for ggplot
+df_plot <- data.frame(n1 = n1, n2 = n2)
+
+# create the scatter plot with diagonal reference line
+p <- ggplot(df_plot, aes(x = n1, y = n2)) +
+  geom_point(color = "blue", alpha = 0.6) + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,1000)) +
+  scale_y_continuous(limits = c(0,1000)) +
+  labs(
+    x = "n1 (R basic function)",
+    y = "n2 (pwr package)",
+    title = "Comparison of two power calculation approches"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12)
+  )
+p
+```
+
+We can see that all three methods can approach the real power. In the following, we will calculate the minimum sample size based on the power analysis. We ultimately decided to use the basic `R` function for subsequent power calculations. This is because the 16 S-squared method and the SNR method are only suitable for determining sample sizes up to 80% power. The `pwr` package is not stable, e.g. it cannot calculate sample sizes for small effects (`Cohen's d` below 0.0001).
+
+Below, we show the summary of the sample size calculation based on the basic `R` function.
+
+Economics:
+
+```{r n economics, warning=FALSE}
+# economics
+d1 <- abs(df_eco$mu_unadj)
+d2 <- abs(df_eco$mu_adj)
+df_eco <- df_eco %>% mutate(n_unadj = sapply(d1, basic.N),
+                            n_adj = sapply(d2, basic.N)) # median 413.3353 and 1622.799
+
+df.summary <- data.frame(Q1 = quantile(df_eco$n_adj, probs = 0.25)[[1]] * 2,
+                         Median = quantile(df_eco$n_adj, probs = 0.5)[[1]] * 2,
+                         Q3 = quantile(df_eco$n_adj, probs = 0.75)[[1]] * 2) %>% dfround(0)
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Environment:
+
+```{r n environment, warning=FALSE}
+# environment
+d1 <- abs(df_env$mu_unadj)
+d2 <- abs(df_env$mu_adj)
+df_env <- df_env %>% mutate(n_unadj = sapply(d1, basic.N),
+                            n_adj = sapply(d2, basic.N)) #  median 47.22543 and 61.77746
+df.summary <- data.frame(Q1 = quantile(df_env$n_adj, probs = 0.25)[[1]] * 2,
+                         Median = quantile(df_env$n_adj, probs = 0.5)[[1]] * 2,
+                         Q3 = quantile(df_env$n_adj, probs = 0.75)[[1]] * 2) %>% dfround(0)
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Medicine:
+
+```{r n medicine, warning=FALSE}
+# medicine
+d1 <- abs(df_med$mu_unadj)
+d2 <- abs(df_med$mu_adj)
+df_med <- df_med %>% mutate(n_unadj = sapply(d1, basic.N),
+                            n_adj = sapply(d2, basic.N)) #  median 365.0777 and 757.2246
+df.summary <- data.frame(Q1 = quantile(df_med$n_adj, probs = 0.25)[[1]] * 2,
+                         Median = quantile(df_med$n_adj, probs = 0.5)[[1]] * 2,
+                         Q3 = quantile(df_med$n_adj, probs = 0.75)[[1]] * 2) %>% dfround(0)
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Psychology:
+
+```{r n psychology, warning=FALSE}
+# psychology
+d1 <- abs(df_psy$mu_unadj)
+d2 <- abs(df_psy$mu_adj)
+df_psy <- df_psy %>% mutate(n_unadj = sapply(d1, basic.N),
+                            n_adj = sapply(d2, basic.N)) #  median 126.5932 and 215.8588
+df.summary <- data.frame(Q1 = quantile(df_psy$n_adj, probs = 0.25)[[1]] * 2,
+                         Median = quantile(df_psy$n_adj, probs = 0.5)[[1]] * 2,
+                         Q3 = quantile(df_psy$n_adj, probs = 0.75)[[1]] * 2) %>% dfround(0)
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+
+## Power 
+
+We calculate the power of individual studies to detect the true effect in the real world.
+
+Economics:
+
+```{r pwr economics, warning=FALSE}
+# economics
+pwr_datlist_eco <- list()
+for(i in seq_along(datlist_eco)) {
+  mu_adj <- df_eco$mu_adj[i]
+  pwr_datlist_eco[[i]] <- pwrcalc(mu_adj, datlist_eco[[i]]$se_obs) %>% data.frame()
+}
+df.fig <- data.frame(pwr = do.call(rbind, pwr_datlist_eco)[[1]])# bind_rows(pwr_datlist_eco)
+
+df.summary <- data.frame(Q1 = quantile(df.fig$pwr, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$pwr, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$pwr, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$pwr),
+                         SD = sd(df.fig$pwr))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Environment:
+
+```{r pwr environment, warning=FALSE}
+# remove zero effect that does not allow for power calculation
+dat_eco2 <- dat_eco[dat_eco$mu_obs != 0,] 
+dat_eco2$n <- sapply(abs(dat_eco2$mu_obs), basic.N)  
+
+# environment
+pwr_datlist_env <- list()
+for(i in seq_along(datlist_env)) {
+  mu_adj <- df_env$mu_adj[i]
+  pwr_datlist_env[[i]] <- pwrcalc(mu_adj, datlist_env[[i]]$se_obs) %>% data.frame()
+}
+df.fig <- data.frame(pwr = do.call(rbind, pwr_datlist_env)[[1]])
+df.summary <- data.frame(Q1 = quantile(df.fig$pwr, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$pwr, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$pwr, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$pwr),
+                         SD = sd(df.fig$pwr))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Medicine:
+
+```{r pwr medicine, warning=FALSE}
+# medicine
+pwr_datlist_med <- list()
+for(i in seq_along(datlist_med)) {
+  mu_adj <- df_med$mu_adj[i]
+  pwr_datlist_med[[i]] <- pwrcalc(mu_adj, datlist_med[[i]]$se_obs) %>% data.frame()
+}
+df.fig <- data.frame(pwr = do.call(rbind, pwr_datlist_med)[[1]])
+df.summary <- data.frame(Q1 = quantile(df.fig$pwr, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$pwr, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$pwr, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$pwr),
+                         SD = sd(df.fig$pwr))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+```
+
+Psychology:
+
+```{r pwr psychology, warning=FALSE}
+# psychology
+pwr_datlist_psy <- list()
+datlist_psy3 <- c(datlist_psy, datlist_psy2)
+for(i in seq_along(datlist_psy3)) {
+  mu_adj <- df_psy$mu_adj[i]
+  pwr_datlist_psy[[i]] <- pwrcalc(mu_adj, datlist_psy3[[i]]$se_obs) %>% data.frame()
+}
+df.fig <- data.frame(pwr = do.call(rbind, pwr_datlist_psy)[[1]])
+df.summary <- data.frame(Q1 = quantile(df.fig$pwr, probs = 0.25)[[1]],
+                         Median = quantile(df.fig$pwr, probs = 0.5)[[1]],
+                         Q3 = quantile(df.fig$pwr, probs = 0.75)[[1]],
+                         Mean = mean(df.fig$pwr),
+                         SD = sd(df.fig$pwr))
+
+knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
+
+
+## plot
+## power 
+df_pwr <- data.frame(Field = c("Medicine", "Environment", "Psychology", "Economics"),
+                     est = c(median(dat_med$pwr), median(dat_env$pwr), median(dat_psy$pwr), median(dat_eco$pwr)))
+
+df_pwr$Field <- as.factor(df_pwr$Field)
+df_pwr$Field <- factor(df_pwr$Field, levels = c("Economics", "Psychology", "Environment", "Medicine"))
+
+p.pwr <- df_pwr %>% 
+ ggplot(aes(x = Field, y = est, fill = Field, color = Field)) +
+  geom_segment(aes(x = Field, xend = Field), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, size = 6) +
+  scale_fill_manual(values = paletteer_d("ggthemes::excel_Berlin")) +
+  scale_color_manual(values = paletteer_d("ggthemes::excel_Berlin")) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "Statistical power", x = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm')) +
+  coord_flip()
+
+p.pwr
+```
+
+
+## False discovery rate (FDR)
+
+```{r}
+# other indicators
+# economics
+## get estimates 
+res_eco <- zcurve(z = dat_eco$mu_obs, method = "EM", bootstrap = T)  # assuming no publication bias zcurve(z = dat$z_adj, method = "EM", bootstrap = F, control = list(a = 0))
+#saveRDS(res_eco, here("Dat","res_eco.rds"))
+res_eco <- readRDS(here("Dat","res_eco.rds"))
+res_eco.est <- summary(res_eco, all = TRUE)
+
+# environment
+## get estimates
+res_env <- zcurve(z = dat_env$mu_obs, method = "EM", bootstrap = T) 
+#saveRDS(res_env, here("Dat","res_env.rds"))
+res_env <- readRDS(here("Dat","res_env.rds"))
+res_env.est <- summary(res_env, all = TRUE)
+
+# medicine
+## get estimates
+res_med <- zcurve(z = dat_med$mu_obs, method = "EM", bootstrap = T) 
+#saveRDS(res_med, here("Dat","res_med.rds"))
+res_med <- readRDS(here("Dat","res_med.rds"))
+res_med.est <- summary(res_med, all = TRUE)
+
+# psychology
+## get estimates
+res_psy <- zcurve(z = dat_psy$mu_obs, method = "EM", bootstrap = T) 
+#saveRDS(res_psy, here("Dat","res_psy.rds"))
+res_psy <- readRDS(here("Dat","res_psy.rds"))
+res_psy.est <- summary(res_psy, all = TRUE)
+
+
+# plot
+## FDR
+df_fdr <- data.frame(Field = c("Medicine", "Environment", "Psychology", "Economics"),
+                     est = c(res_med.est$coefficients[3], res_env.est$coefficients[3], res_psy.est$coefficients[3], res_env.est$coefficients[3]))
+
+df_fdr$Field <- as.factor(df_fdr$Field)
+df_fdr$Field <- factor(df_fdr$Field, levels = c("Economics", "Psychology", "Environment", "Medicine"))
+
+p.fdr <- df_fdr %>% 
+ ggplot(aes(x = Field, y = est, fill = Field, color = Field)) +
+  geom_segment(aes(x = Field, xend = Field), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, size = 6) +
+  scale_fill_manual(values = rev(barCOLS)) +
+  scale_color_manual(values = rev(dotCOLS)) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "False discovery risk", x = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm')) +
+  coord_flip()
+
+## ERR 
+df_err <- data.frame(Field = c("Medicine", "Environment", "Psychology", "Economics"),
+                     est = c(res_med.est$coefficients[1], res_env.est$coefficients[1], res_psy.est$coefficients[1], res_env.est$coefficients[1]))
+df_err$Field <- as.factor(df_err$Field)
+df_err$Field <- factor(df_err$Field, levels = c("Economics", "Psychology", "Environment", "Medicine"))
+
+p.err <- df_err %>% 
+ ggplot(aes(x = Field, y = est, fill = Field, color = Field)) +
+  geom_segment(aes(x = Field, xend = Field), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, size = 6) +
+  scale_fill_manual(values = rev(barCOLS)) +
+  scale_color_manual(values = rev(dotCOLS)) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "Expected replication rate", x = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm')) +
+  coord_flip()
+
+## EDR 
+df_edr <- data.frame(Field = c("Medicine", "Environment", "Psychology", "Economics"),
+                     est = c(res_med.est$coefficients[2], res_env.est$coefficients[2], res_psy.est$coefficients[2], res_env.est$coefficients[2]))
+df_edr$Field <- as.factor(df_edr$Field)
+df_edr$Field <- factor(df_edr$Field, levels = c("Economics", "Psychology", "Environment", "Medicine"))
+
+p.edr <- df_edr %>% 
+ ggplot(aes(x = Field, y = est, fill = Field, color = Field)) +
+  geom_segment(aes(x = Field, xend = Field), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, size = 6) +
+  scale_fill_manual(values = rev(barCOLS)) +
+  scale_color_manual(values = rev(dotCOLS)) +
+  guides(color = "none", fill = "none") + 
+  labs(y = "Expected discovery rate", x = " ") +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm')) +
+  coord_flip()
+
+
+
+png(filename = "fig error.png", width = 10, height = 10, units = "in", type = "windows", res = 800)
+p.pwr + p.fdr + p.err + p.edr + plot_layout(nrow = 2, ncol = 2) +
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(size = 16))
+dev.off() 
+
+```
+
+
+
+# Fig - median N
+
+```{r}
+# define function to calculate n
+basic.N <- function(d) {power.t.test(delta=d,sd=1,power=0.8,sig=0.05)$n}
+basic.N2 <- function(d) {power.t.test(delta=d,sd=1,power=0.99,sig=0.05)$n}
+# economics
+df1 <- data.frame(Field = rep("Economics", 2),
+                 Design = c("Achieving 80% power", "Achieving zero exaggeration"),
+                 ub = c(ci_median(abs(df_eco$mu_adj))$interval[[1]]
+                        %>% basic.N(),
+                        ci_median(abs(df_eco$mu_adj))$interval[[1]]
+                        %>% basic.N2()),
+                 est = c(ci_median(abs(df_eco$mu_adj))$estimate[[1]] 
+                        %>% basic.N(),
+                        ci_median(abs(df_eco$mu_adj))$estimate[[1]]
+                        %>% basic.N2()),
+                 lb = c(ci_median(abs(df_eco$mu_adj))$interval[[2]] 
+                        %>% basic.N(),
+                        ci_median(abs(df_eco$mu_adj))$interval[[2]]
+                        %>% basic.N2())) %>% dfround(0)
+# environment
+df2 <- data.frame(Field = rep("Environment", 2),
+           Design = c("Achieving 80% power", "Achieving zero exaggeration"),
+           ub = c(ci_median(abs(df_env$mu_adj))$interval[[1]]
+                  %>% basic.N(),
+                  ci_median(abs(df_env$mu_adj))$interval[[1]]
+                  %>% basic.N2()),
+           est = c(ci_median(abs(df_env$mu_adj))$estimate[[1]] 
+                   %>% basic.N(),
+                   ci_median(abs(df_env$mu_adj))$estimate[[1]]
+                   %>% basic.N2()),
+           lb = c(ci_median(abs(df_env$mu_adj))$interval[[2]] 
+                  %>% basic.N(),
+                  ci_median(abs(df_env$mu_adj))$interval[[2]]
+                  %>% basic.N2())) %>% dfround(0)
+# medicine
+df3 <- data.frame(Field = rep("Medicine", 2),
+           Design = c("Achieving 80% power", "Achieving zero exaggeration"),
+           ub = c(ci_median(abs(df_med$mu_adj))$interval[[1]]
+                  %>% basic.N(),
+                  ci_median(abs(df_med$mu_adj))$interval[[1]]
+                  %>% basic.N2()),
+           est = c(ci_median(abs(df_med$mu_adj))$estimate[[1]] 
+                   %>% basic.N(),
+                   ci_median(abs(df_med$mu_adj))$estimate[[1]]
+                   %>% basic.N2()),
+           lb = c(ci_median(abs(df_med$mu_adj))$interval[[2]] 
+                  %>% basic.N(),
+                  ci_median(abs(df_med$mu_adj))$interval[[2]]
+                  %>% basic.N2())) %>% dfround(0)
+# psychology
+df4 <- data.frame(Field = rep("Psychology", 2),
+           Design = c("Achieving 80% power", "Achieving zero exaggeration"),
+           ub = c(ci_median(abs(df_psy$mu_adj))$interval[[1]]
+                  %>% basic.N(),
+                  ci_median(abs(df_psy$mu_adj))$interval[[1]]
+                  %>% basic.N2()),
+           est = c(ci_median(abs(df_psy$mu_adj))$estimate[[1]] 
+                   %>% basic.N(),
+                   ci_median(abs(df_psy$mu_adj))$estimate[[1]]
+                   %>% basic.N2()),
+           lb = c(ci_median(abs(df_psy$mu_adj))$interval[[2]] 
+                  %>% basic.N(),
+                  ci_median(abs(df_psy$mu_adj))$interval[[2]]
+                  %>% basic.N2())) %>% dfround(0)
+
+dfp <- rbind(df1, df2, df3, df4)
+dfp$Field <- as.factor(dfp$Field)
+dfp$Field <- factor(dfp$Field, levels = c("Medicine", "Environment", "Psychology", "Economics"))
+dfp$Design <- as.factor(dfp$Design)
+dfp$Design <- factor(dfp$Design, levels = c("Achieving zero exaggeration", "Achieving 80% power"))
+
+# total n
+dfp <- dfp %>% mutate(ub_2 = 2 * ub,
+                      est_2 = 2 * est,
+                      lb_2 = 2 * lb)
+
+# plot
+p5 <- dfp %>% filter(Field == "Economics") %>% 
+  ggplot(aes(x = Design, y = est_2, ymin = lb_2, ymax = ub_2, col = Field, fill = Field)) + 
+  geom_linerange(linewidth = 8) +
+  coord_flip() +
+  geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
+  geom_text(aes(label = Design), hjust = 0.3, vjust = -2, size = 4) + # https://r-graph-gallery.com/275-add-text-labels-with-ggplot2.html#:~:text=This%20example%20demonstrates%20how%20to%20use%20geom_text%20%28%29,Y%20axis%20check_overlap%20tries%20to%20avoid%20text%20overlap.
+  geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) + 
+  scale_fill_manual(values = barCOLS[4]) +
+  scale_color_manual(values = dotCOLS[4]) +
+  scale_y_continuous(limits = c(2000, 13000), expand = c(0.02, 0.01)) +
+  theme_bw() +
+  guides(fill = "none", color = "none") +
+  labs(x = "", y = bquote(paste("Required sample size in Economics") )) +
+  
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), 
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
+
+p6 <- dfp %>% filter(Field == "Environment") %>% 
+  ggplot(aes(x = Design, y = est_2, ymin = lb_2, ymax = ub_2, col = Field, fill = Field)) + 
+  geom_linerange(linewidth = 8) +
+  coord_flip() +
+  geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
+  geom_text(aes(label = Design), hjust = 0.2, vjust = -2, size = 4) +
+  geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) +
+  scale_fill_manual(values = barCOLS[2]) +
+  scale_color_manual(values = dotCOLS[2]) +
+  scale_y_continuous(limits = c(100, 500), expand = c(0.02, 0.01)) +
+  theme_bw() +
+  guides(fill = "none", color = "none") +
+  labs(x = "", y = bquote(paste("Required sample size in Environment") )) +
+  
+  theme(axis.title = element_text(size = 14),
+      axis.text.x = element_text(size = 12, color = "black"),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(), 
+      plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
+
+
+p7 <- dfp %>% filter(Field == "Medicine") %>% 
+  ggplot(aes(x = Design, y = est_2, ymin = lb_2, ymax = ub_2, col = Field, fill = Field)) + 
+  geom_linerange(linewidth = 8) +
+  coord_flip() +
+  geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
+  geom_text(aes(label = Design), hjust = 0.65, vjust = -2, size = 4) +
+  geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) +
+  scale_fill_manual(values = barCOLS[1]) +
+  scale_color_manual(values = dotCOLS[1]) +
+  scale_y_continuous(limits = c(800, 4100), expand = c(0.02, 0.01)) +
+  theme_bw() +
+  guides(fill = "none", color = "none") +
+  labs(x = "", y = bquote(paste("Required sample size in Medicine") )) +
+  
+  theme(axis.title = element_text(size = 14),
+      axis.text.x = element_text(size = 12, color = "black"),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(), 
+      plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
+
+
+p8 <- dfp %>% filter(Field == "Psychology") %>% 
+  ggplot(aes(x = Design, y = est_2, ymin = lb_2, ymax = ub_2, col = Field, fill = Field)) + 
+  geom_linerange(linewidth = 8) +
+  coord_flip() +
+  geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
+  geom_text(aes(label = Design), hjust = 0.5, vjust = -2, size = 4) +
+  geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) +
+  scale_fill_manual(values = barCOLS[3]) +
+  scale_color_manual(values = dotCOLS[3]) +
+  scale_y_continuous(limits = c(200, 1300), expand = c(0.02, 0.01)) +
+  theme_bw() +
+  guides(fill = "none", color = "none") +
+  labs(x = "", y = bquote(paste("Required sample size in Psychology") )) +
+  
+  theme(axis.title = element_text(size = 14),
+      axis.text.x = element_text(size = 12, color = "black"),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(), 
+      plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
+
+
+png(filename = "fig median N.png", width = 10, height = 10, units = "in", type = "windows", res = 800)
+(p7 + p6) / (p8 + p5) + 
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(size = 16))
+dev.off() 
+
+# alternative
+p <- ggplot(dfp, aes(x = Design, y = est, ymin = lb, ymax = ub, col = Field, fill = Field)) + 
+  geom_linerange(linewidth = 8) +
+  coord_flip() +
+  #geom_hline(yintercept = 0.2, lty = "longdash", color = "grey40") +
+  geom_point(size=2, shape=21, colour="white", stroke = 1.5) +
+  scale_fill_manual(values=barCOLS) +
+  scale_color_manual(values=dotCOLS) +
+  scale_y_continuous(limits = c(0, 6000), breaks = c(0, 500, seq(1000,5000,by=1000)), labels = c(0, 500, seq(1000,5000,by=1000)), expand = c(0, 0.01)) +
+  theme_bw() +
+  guides(fill = "none", color = "none") +
+  labs(x = "", y = bquote(paste("Minimum sample size per group"~"(", "two-sample", ~ italic(t), ~ "test", ")")) ) +
+  
+  theme(axis.title = element_text(size = 14),
+        axis.text.x = element_text(size = 12, color = "black"),
+        axis.text.y = element_text(size = 12, color = "black"),
+        strip.text = element_text(size = 14, color = "black"),
+        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm')) +
+  ggforce::facet_col(
+    facets = ~Field,
+    scales = "free_y",
+    space = "free",
+    strip.position = "top")
+
+png(filename = "fig median N2.png", width = 8, height = 8, units = "in", type = "windows", res = 800)
+cowplot::plot_grid(p, labels = c('A'), label_size = 16, nrow = 1, ncol = 1)
+dev.off() 
+
+
+# plot_layout(tag_level = 'new') +  plot_annotation(tag_levels = list(c(''))) & theme(plot.tag = element_text(size = 16, face = "bold"))  
+```
+
+
+# function for absolute difference
+
+```{r}
+es.func1 <- function(dat, m1, m2, var_m1, var_m2) {
+  dat <- dat %>%
+    mutate(
+      yi_d = abs({{ m1 }} - {{ m2 }}),
+      vi_d = {{ var_m1 }} + {{ var_m2 }}
+    )
+  
+  return(dat)
+}
+
+
+dat <- es.func1(dat = df_eco_null,
+               m1 = mu_unadj,
+               m2 = mu_adj,
+               var_m1 = se_unadj^2, 
+               var_m2 = se_adj^2)
+```
+
+
+# Package information
+
+```{r}
+subset(data.frame(sessioninfo::package_info()), attached==TRUE, c(package, loadedversion))
+```
+
+# References
+
