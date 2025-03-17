@@ -161,6 +161,7 @@ p <- ggdensity(df.fig, x = "mu_unadj",
 p
 ```
 
+
 Primary study level data:
 
 ```{r individual data, warning=FALSE}
@@ -236,29 +237,31 @@ dat_med <- readRDS(here("Dat","dat_med.rds"))
 dat_psy <- readRDS(here("Dat","dat_psy.rds"))
 ```
 
-# Analysis
+# Methods
 
 To assess the necessity of large sample sizes to reliable detect effect size in the real world and evaluate the impact of selective reporting, we conducted a series of descriptive and statistical analyses.
 
--   Estimating True Effect Sizes with Robust Bayesian Model Averaging
+- Estimating True Effect Sizes with Robust Bayesian Model Averaging
 
 A key factor in understanding the need for large sample sizes is the magnitude of typical effect sizes in the studied disciplines. To obtain effect size estimates that account for selective reporting, we employed robust Bayesian model averaging (BMA) @bartovs2023robust, which adjusts for potential biases introduced by the preferential reporting of significant findings. This method provides a principled way to approximate the true effect size in each field by averaging over a set of plausible models weighted by their posterior probabilities. The detailed model fitting process is described in Bartoš et al. (2024) @bartovs2024footprint.
 
 To facilitate cross-disciplinary comparisons and interpretability, we converted the effect sizes into $\eta^2$ (or equivalently $R^2$), which represents the proportion of variance explained by the effect. This standardization allows for a consistent evaluation of effect size magnitudes across different study designs and measurement scales.
 
--   Evaluating Changes in Evidence Strength After Adjusting for Selective Reporting
+- Evaluating Changes in Evidence Strength After Adjusting for Selective Reporting
 
 To quantify how the presence of statistical evidence changes after accounting for selective reporting, we applied a straightforward approach. Under the assumption of normality, we computed the Wald-type p-values for both:
 
-The naïve effect size (before correcting for selective reporting). The adjusted 'true' effect size (after selective reporting correction). We then calculated the percentage of cases in which the statistical significance of the effect changed (p \< 0.05) after applying the selective reporting adjustment. This provides insight into how often selective reporting influences the strength of statistical conclusions.
+The naïve effect size (before correcting for selective reporting).
+The adjusted 'true' effect size (after selective reporting correction).
+We then calculated the percentage of cases in which the statistical significance of the effect changed (p < 0.05) after applying the selective reporting adjustment. This provides insight into how often selective reporting influences the strength of statistical conclusions.
 
--   Quantifying Effect Size Overestimation via the Shrinkage Factor
+- Quantifying Effect Size Overestimation via the Shrinkage Factor
 
 To measure the extent to which selective reporting leads to effect size inflation, we computed the shrinkage factor (SF), defined as the ratio of the adjusted effect size (after selective reporting correction) to the originally reported effect size. An SF value below 1 indicates that the reported effect size is systematically overestimated due to selective reporting.
 
 To quantify uncertainty in the SF estimates, we used the Delta method, a widely adopted technique for approximating the variance of non-linear transformations of estimators. This method enabled us to compute 95% confidence intervals for the SF, allowing for an assessment of the reliability of our bias-adjusted effect size estimates.
 
--   Determining Minimal Sample Sizes for Reliable Estimation
+- Determining Minimal Sample Sizes for Reliable Estimation
 
 To establish the sample sizes necessary for robust effect size estimation, we determined:
 
@@ -266,21 +269,23 @@ The sample size required to achieve 80% power, the conventional standard for det
 
 These calculations were performed under a two-independent-groups experimental design, using a two-sample t-test, which is one of the most common statistical tests for comparing means across groups. By leveraging our effect size estimates, we provided empirical guidance on the minimal sample sizes needed to maintain statistical rigor in real-world research.
 
--   Estimating the False Discovery Rate Using the z-Curve Method
+- Estimating the False Discovery Rate Using the z-Curve Method
 
 To quantify the false discovery rate (FDR)-the proportion of statistically significant results that are likely to be false positives-we applied the z-curve method @bartovs2022z. This technique analyzes the distribution of test statistics (e.g., z-scores) from published studies to estimate the extent of selective reporting and publication bias.
 
 The z-curve approach operates as follows:
 
-We extracted the distribution of reported z-values from studies that yielded statistically significant results (p \< 0.05).
+We extracted the distribution of reported z-values from studies that yielded statistically significant results (p < 0.05).
 
 A mixture model was fitted to this distribution to infer the proportion of observed results that stem from true effects versus those arising from random noise.
 
 The model was then extrapolated beyond the observed data to estimate two key metrics:
 
-The expected replication rate (ERR)—the probability that a statistically significant result would be replicated in a new study with the same design. The false discovery rate (FDR)—the estimated proportion of significant findings that are likely to be false positives.
+The expected replication rate (ERR)—the probability that a statistically significant result would be replicated in a new study with the same design.
+The false discovery rate (FDR)—the estimated proportion of significant findings that are likely to be false positives.
 
 By integrating these analytical approaches, we provide a comprehensive assessment of effect size estimation, selective reporting bias, and the statistical power requirements necessary for reliable inference in real-world research.
+
 
 ## Variance explained in the real word
 
@@ -520,6 +525,7 @@ df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
 knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
 ```
 
+
 Psychology:
 
 ```{r eta2 psychology, warning=FALSE}
@@ -553,9 +559,11 @@ df.summary <- data.frame(Q1 = quantile(df.fig$eta2_adj, probs = 0.25)[[1]],
 knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
 ```
 
+
 ## Presence of evidence
 
 We calculate the overestimate of the presence of evidence using the typical Wald-type statistical tests under the normality assumption.
+
 
 Economics:
 
@@ -699,10 +707,13 @@ pwr.N <- function(d) {pwr.t.test(d = d, power = 0.80, sig.level = 0.05)$n}
 
 # compute absolute values of adjusted mu
 d <- abs(df_eco$mu_adj)
+# note that the `pwr` package cannot calculate sample sizes for small effects (`Cohen's d` below 0.001). So, we have to remove all effect sizes that are lower than 0.001.
+
+d2 <- d[d > 0.001]
 
 # compute n1 and n2
-n1 <- sapply(d, ttest.N)
-n2 = sapply(d,pwr.N)
+n1 <- sapply(d2, ttest.N)
+n2 = sapply(d2, pwr.N)
 
 # convert to a data frame for ggplot
 df_plot <- data.frame(n1 = n1, n2 = n2)
@@ -727,7 +738,7 @@ p <- ggplot(df_plot, aes(x = n1, y = n2)) +
 p
 ```
 
-We can see that all three methods can approach the real power. In the following, we will calculate the minimum sample size based on the power analysis. We ultimately decided to use the basic `R` function for subsequent power calculations. This is because the 16 S-squared method and the SNR method are only suitable for determining sample sizes up to 80% power. The `pwr` package is not stable, e.g. it cannot calculate sample sizes for small effects (`Cohen's d` below 0.0001).
+We can see that all three methods can approach the real power. In the following, we will calculate the minimum sample size based on the power analysis. We ultimately decided to use the basic `R` function for subsequent power calculations. This is because the 16 S-squared method and the SNR method are only suitable for determining sample sizes up to 80% power. The `pwr` package is not stable, e.g. it cannot calculate sample sizes for small effects (`Cohen's d` below 0.001).
 
 Below, we show the summary of the sample size calculation based on the basic `R` function.
 
@@ -790,7 +801,8 @@ df.summary <- data.frame(Q1 = quantile(df_psy$n_adj, probs = 0.25)[[1]] * 2,
 knitr::kable(dfround(df.summary,3) %>% head(), "pipe")
 ```
 
-## Power
+
+## Power 
 
 We calculate the power of individual studies to detect the true effect in the real world.
 
@@ -903,6 +915,7 @@ p.pwr <- df_pwr %>%
 
 p.pwr
 ```
+
 
 ## False discovery rate (FDR)
 
@@ -1018,7 +1031,11 @@ dev.off()
 
 ```
 
-# Fig - median N
+
+
+# Figure
+
+The Figure 1 we reported in the main text can be reproduced with:
 
 ```{r}
 # define function to calculate n
@@ -1102,10 +1119,10 @@ p5 <- dfp %>% filter(Field == "Economics") %>%
   geom_linerange(linewidth = 8) +
   coord_flip() +
   geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
-  geom_text(aes(label = Design), hjust = 0.3, vjust = -2, size = 4) + # https://r-graph-gallery.com/275-add-text-labels-with-ggplot2.html#:~:text=This%20example%20demonstrates%20how%20to%20use%20geom_text%20%28%29,Y%20axis%20check_overlap%20tries%20to%20avoid%20text%20overlap.
+  geom_text(aes(label = Design), hjust = 0.3, vjust = -2, size = 4) +
   geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) + 
-  scale_fill_manual(values = barCOLS[4]) +
-  scale_color_manual(values = dotCOLS[4]) +
+  scale_fill_manual(values = paletteer_d("ggthemes::excel_Berlin")[4]) +
+  scale_color_manual(values = paletteer_d("ggthemes::excel_Berlin")[4]) +
   scale_y_continuous(limits = c(2000, 13000), expand = c(0.02, 0.01)) +
   theme_bw() +
   guides(fill = "none", color = "none") +
@@ -1124,8 +1141,8 @@ p6 <- dfp %>% filter(Field == "Environment") %>%
   geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
   geom_text(aes(label = Design), hjust = 0.2, vjust = -2, size = 4) +
   geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) +
-  scale_fill_manual(values = barCOLS[2]) +
-  scale_color_manual(values = dotCOLS[2]) +
+  scale_fill_manual(values = paletteer_d("ggthemes::excel_Berlin")[2]) +
+  scale_color_manual(values = paletteer_d("ggthemes::excel_Berlin")[2]) +
   scale_y_continuous(limits = c(100, 500), expand = c(0.02, 0.01)) +
   theme_bw() +
   guides(fill = "none", color = "none") +
@@ -1145,8 +1162,8 @@ p7 <- dfp %>% filter(Field == "Medicine") %>%
   geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
   geom_text(aes(label = Design), hjust = 0.65, vjust = -2, size = 4) +
   geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) +
-  scale_fill_manual(values = barCOLS[1]) +
-  scale_color_manual(values = dotCOLS[1]) +
+  scale_fill_manual(values = paletteer_d("ggthemes::excel_Berlin")[1]) +
+  scale_color_manual(values = paletteer_d("ggthemes::excel_Berlin")[1]) +
   scale_y_continuous(limits = c(800, 4100), expand = c(0.02, 0.01)) +
   theme_bw() +
   guides(fill = "none", color = "none") +
@@ -1166,8 +1183,8 @@ p8 <- dfp %>% filter(Field == "Psychology") %>%
   geom_point(size=3.5, shape=21, colour="white", stroke = 2) +
   geom_text(aes(label = Design), hjust = 0.5, vjust = -2, size = 4) +
   geom_text(aes(label = est_2), hjust = 0.3, vjust = 3, size = 4) +
-  scale_fill_manual(values = barCOLS[3]) +
-  scale_color_manual(values = dotCOLS[3]) +
+  scale_fill_manual(values = paletteer_d("ggthemes::excel_Berlin")[3]) +
+  scale_color_manual(values = paletteer_d("ggthemes::excel_Berlin")[3]) +
   scale_y_continuous(limits = c(200, 1300), expand = c(0.02, 0.01)) +
   theme_bw() +
   guides(fill = "none", color = "none") +
@@ -1180,64 +1197,13 @@ p8 <- dfp %>% filter(Field == "Psychology") %>%
       plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm'))
 
 
-png(filename = "fig median N.png", width = 10, height = 10, units = "in", type = "windows", res = 800)
-(p7 + p6) / (p8 + p5) + 
+#png(filename = "Figure/Figure 1.png", width = 10, height = 10, units = "in", type = "windows", res = 800)
+p <- (p7 + p6) / (p8 + p5) + 
   plot_annotation(tag_levels = 'A') & 
   theme(plot.tag = element_text(size = 16))
-dev.off() 
-
-# alternative
-p <- ggplot(dfp, aes(x = Design, y = est, ymin = lb, ymax = ub, col = Field, fill = Field)) + 
-  geom_linerange(linewidth = 8) +
-  coord_flip() +
-  #geom_hline(yintercept = 0.2, lty = "longdash", color = "grey40") +
-  geom_point(size=2, shape=21, colour="white", stroke = 1.5) +
-  scale_fill_manual(values=barCOLS) +
-  scale_color_manual(values=dotCOLS) +
-  scale_y_continuous(limits = c(0, 6000), breaks = c(0, 500, seq(1000,5000,by=1000)), labels = c(0, 500, seq(1000,5000,by=1000)), expand = c(0, 0.01)) +
-  theme_bw() +
-  guides(fill = "none", color = "none") +
-  labs(x = "", y = bquote(paste("Minimum sample size per group"~"(", "two-sample", ~ italic(t), ~ "test", ")")) ) +
-  
-  theme(axis.title = element_text(size = 14),
-        axis.text.x = element_text(size = 12, color = "black"),
-        axis.text.y = element_text(size = 12, color = "black"),
-        strip.text = element_text(size = 14, color = "black"),
-        plot.margin=unit(c(0,0.3,0.1,-0.5), 'cm')) +
-  ggforce::facet_col(
-    facets = ~Field,
-    scales = "free_y",
-    space = "free",
-    strip.position = "top")
-
-png(filename = "fig median N2.png", width = 8, height = 8, units = "in", type = "windows", res = 800)
-cowplot::plot_grid(p, labels = c('A'), label_size = 16, nrow = 1, ncol = 1)
-dev.off() 
-
-
-# plot_layout(tag_level = 'new') +  plot_annotation(tag_levels = list(c(''))) & theme(plot.tag = element_text(size = 16, face = "bold"))  
+p
 ```
 
-# function for absolute difference
-
-```{r}
-es.func1 <- function(dat, m1, m2, var_m1, var_m2) {
-  dat <- dat %>%
-    mutate(
-      yi_d = abs({{ m1 }} - {{ m2 }}),
-      vi_d = {{ var_m1 }} + {{ var_m2 }}
-    )
-  
-  return(dat)
-}
-
-
-dat <- es.func1(dat = df_eco_null,
-               m1 = mu_unadj,
-               m2 = mu_adj,
-               var_m1 = se_unadj^2, 
-               var_m2 = se_adj^2)
-```
 
 # Package information
 
@@ -1246,3 +1212,4 @@ subset(data.frame(sessioninfo::package_info()), attached==TRUE, c(package, loade
 ```
 
 # References
+
