@@ -6,8 +6,7 @@
 
 ## Transparency declaration
 
-The authors affirm that the manuscript is an honest, accurate, and transparent account of the study being reported, and no important
-aspects of the study have been omitted.
+The authors affirm that the manuscript is an honest, accurate, and transparent account of the study being reported, and no important aspects of the study have been omitted.
 
 ## Reproducibility declaration
 
@@ -34,14 +33,14 @@ The `Dat` folder includes the datasets that are necessary for reproducing all an
 
 The datasets were originally compiled by:
 
-> Bartoš, F., Maier, M., Wagenmakers, E. J., Nippold, F., Doucouliagos, H., Ioannidis, J. P., ... & Stanley, T. D. (2024). Footprint of publication selection bias on meta‐analyses in medicine, environmental sciences, psychology, and economics. Research Synthesis Methods, 15(3), 500-511..
+> Bartoš, F., Maier, M., Wagenmakers, E. J., Nippold, F., Doucouliagos, H., Ioannidis, J. P., ... & Stanley, T. D. (2024). Footprint of publication selection bias on meta‐analyses in medicine, environmental sciences, psychology, and economics. Research Synthesis Methods, 15(3), 500-511.
 
 Owing to journals’ mandatory open data policies and the widespread adoption of FAIR (Findable, Accessible, Interoperable, and Reusable) data-sharing principles, we could easily find and re-use these publicly accessible datasets.
 
 
 ### `Fig` folder
 
-The `Figure` folder includes the Figure 1 (based on `R` code) reported in the paper. It also includes two supplementary figures.
+The `Figure` folder includes Figure 1 (based on `R` code) reported in the paper. It also includes two supplementary figures.
 
 
 ### `R` folder
